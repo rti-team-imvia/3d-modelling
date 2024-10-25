@@ -30,49 +30,108 @@ class Dataset:
     def __init__(self, conf):
         super(Dataset, self).__init__()
         self.conf = conf
-
         self.data_dir = conf['data_dir']
-        self.render_cameras_name = conf['render_cameras_name']
-
-        self.camera_outside_sphere = True
-        self.scale_mat_scale = 1.1
-
-        camera_dict = np.load(os.path.join(self.data_dir, self.render_cameras_name))
-        self.camera_dict = camera_dict
+        
+        # Read camera file
+        self.cameras_file = os.path.join(self.data_dir, 'cameras_v2.txt')
         self.images_lis = sorted(glob(os.path.join(self.data_dir, 'mask/*.png')))
         self.n_images = len(self.images_lis)
+        
+        # Parse camera parameters
+        self.parse_camera_parameters()
 
-        # world_mat is a projection matrix from world to image
-        self.world_mats_np = [camera_dict['world_mat_%d' % idx].astype(np.float32) for idx in range(self.n_images)]
-
-        self.scale_mats_np = []
-
-        # scale_mat: used for coordinate normalization, we assume the scene to render is inside a unit sphere at origin.
-        self.scale_mats_np = [camera_dict['scale_mat_%d' % idx].astype(np.float32) for idx in range(self.n_images)]
-
+        # Just set identity scale matrices
+        self.scale_mats_np = [np.eye(4) for _ in range(self.n_images)]
+        self.scale_mats_np = np.array(self.scale_mats_np)
+        
+    def parse_camera_parameters(self):
+        """Parse Visual SFM camera parameters file"""
         self.intrinsics_all = []
         self.pose_all = []
-
-        for scale_mat, world_mat in zip(self.scale_mats_np, self.world_mats_np):
-            P = world_mat @ scale_mat
-            P = P[:3, :4]
-            intrinsics, pose = load_K_Rt_from_P(P)
-            #intrinsics = np.array([[3759.07747101073,0,305.500000000000,0],
-            #[0,3759.00543107133,255.500000000000,0],
-            #        [0,0,1,0],
-            #        [0,0,0,1]])
-            self.intrinsics_all.append(intrinsics)
-            # root_determinant = np.linalg.det(pose[:3,:3])**(1/3)
-            # pose = pose / root_determinant
-            self.pose_all.append(pose)
-
-        self.intrinsics_all = np.array(self.intrinsics_all)  # [n_images, 4, 4]
-        self.intrinsics_all_inv = np.linalg.inv(self.intrinsics_all)  # [n_images, 4, 4]
-        self.focal = self.intrinsics_all[0][0, 0]
-        self.pose_all = np.array(self.pose_all)  # [n_images, 4, 4]
-
-
-
+        self.focal_lengths = []
+        
+        with open(self.cameras_file, 'r') as f:
+            lines = f.readlines()
+            
+        # Find start of camera data
+        start_idx = 0
+        for i, line in enumerate(lines):
+            if line.strip() == "# The nubmer of cameras in this reconstruction":
+                n_cameras = int(lines[i + 1])
+                start_idx = i + 2
+                break
+                
+        current_idx = start_idx
+        while current_idx < len(lines):
+            # Skip empty lines and comments
+            if not lines[current_idx].strip() or lines[current_idx].startswith('#'):
+                current_idx += 1
+                continue
+                
+            try:
+                # Image filename (2 lines)
+                current_idx += 2
+                
+                # Focal length
+                focal = float(lines[current_idx].strip())
+                self.focal_lengths.append(focal)
+                current_idx += 1
+                
+                # Principal point
+                px, py = map(float, lines[current_idx].strip().split())
+                current_idx += 1
+                
+                # Skip Translation T and Camera Position C
+                current_idx += 2
+                
+                # Skip Axis Angle and Quaternion
+                current_idx += 2
+                
+                # Read Rotation Matrix (3x3)
+                R = np.zeros((3, 3))
+                for i in range(3):
+                    R[i] = np.array(list(map(float, lines[current_idx + i].strip().split())))
+                current_idx += 3
+                
+                # Go back to read camera position C
+                C_line = lines[current_idx - 7].strip()
+                C = np.array(list(map(float, C_line.split())))
+                
+                # Skip remaining parameters (distortion and EXIF)
+                current_idx += 3
+                
+                # Create intrinsic matrix K
+                K = np.array([
+                    [focal, 0, px],
+                    [0, focal, py],
+                    [0, 0, 1]
+                ])
+                
+                # Create full 4x4 intrinsic matrix
+                intrinsic = np.eye(4)
+                intrinsic[:3, :3] = K
+                self.intrinsics_all.append(intrinsic)
+                
+                # Create camera pose matrix (extrinsics)
+                # P = K[R | t] where t = -RC
+                pose = np.eye(4)
+                pose[:3, :3] = R
+                pose[:3, 3] = -R @ C  # Convert from camera position to translation
+                self.pose_all.append(pose)
+                
+            except Exception as e:
+                print(f"Error parsing camera {len(self.pose_all)}: {str(e)}")
+                break
+        
+        # Convert to numpy arrays
+        self.intrinsics_all = np.array(self.intrinsics_all)
+        self.intrinsics_all_inv = np.linalg.inv(self.intrinsics_all)
+        self.focal = self.focal_lengths[0]  # Use first camera's focal length
+        self.pose_all = np.array(self.pose_all)
+        
+        if len(self.pose_all) != self.n_images:
+            raise ValueError(f"Number of cameras in file ({len(self.pose_all)}) does not match number of images ({self.n_images})")
+        
 def NeuS_to_NeuS2(inputFolder, outputFolder, mask_certainty_name):
     conf = {
         "data_dir": inputFolder,
