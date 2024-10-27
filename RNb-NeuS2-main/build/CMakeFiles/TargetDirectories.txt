@@ -1,0 +1,9 @@
+/work/imvia/ra7916lu/3d-modelling/RNb-NeuS2-main/build/CMakeFiles/rebuild_cache.dir
+/work/imvia/ra7916lu/3d-modelling/RNb-NeuS2-main/build/CMakeFiles/testbed.dir
+/work/imvia/ra7916lu/3d-modelling/RNb-NeuS2-main/build/CMakeFiles/edit_cache.dir
+/work/imvia/ra7916lu/3d-modelling/RNb-NeuS2-main/build/CMakeFiles/ngp.dir
+/work/imvia/ra7916lu/3d-modelling/RNb-NeuS2-main/build/dependencies/neus2_tcnn/CMakeFiles/rebuild_cache.dir
+/work/imvia/ra7916lu/3d-modelling/RNb-NeuS2-main/build/dependencies/neus2_tcnn/CMakeFiles/edit_cache.dir
+/work/imvia/ra7916lu/3d-modelling/RNb-NeuS2-main/build/dependencies/neus2_tcnn/src/CMakeFiles/rebuild_cache.dir
+/work/imvia/ra7916lu/3d-modelling/RNb-NeuS2-main/build/dependencies/neus2_tcnn/src/CMakeFiles/edit_cache.dir
+/work/imvia/ra7916lu/3d-modelling/RNb-NeuS2-main/build/dependencies/neus2_tcnn/src/CMakeFiles/tiny-cuda-nn.dir

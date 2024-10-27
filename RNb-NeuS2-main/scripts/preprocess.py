@@ -33,7 +33,7 @@ class Dataset:
         self.data_dir = conf['data_dir']
         
         # Read camera file
-        self.cameras_file = os.path.join(self.data_dir, 'cameras_v2.txt')
+        self.cameras_file = os.path.join(self.data_dir, 'cameras.sfm')
         self.images_lis = sorted(glob(os.path.join(self.data_dir, 'mask/*.png')))
         self.n_images = len(self.images_lis)
         
@@ -45,93 +45,76 @@ class Dataset:
         self.scale_mats_np = np.array(self.scale_mats_np)
         
     def parse_camera_parameters(self):
-        """Parse Visual SFM camera parameters file"""
+        """Parse SFM camera parameters file"""
         self.intrinsics_all = []
         self.pose_all = []
         self.focal_lengths = []
         
         with open(self.cameras_file, 'r') as f:
-            lines = f.readlines()
+            sfm_data = json.load(f)
+        
+        # Extract views, intrinsics, and poses
+        views = sfm_data['views']
+        intrinsics = sfm_data['intrinsics']
+        poses = sfm_data['poses']
+        
+        num_views = len(views)
+        
+        # Initialize arrays
+        intrinsics_all = np.zeros((num_views, 3, 3))
+        intrinsics_all_inverse = np.zeros((num_views, 3, 3))
+        pose_all = np.zeros((num_views, 4, 4))
+        
+        # Get focal length from first intrinsic
+        focal_length = float(intrinsics[0]['focalLength'])
+        
+        # Process each view
+        for i, view in enumerate(views):
+            view_id = view['viewId']
             
-        # Find start of camera data
-        start_idx = 0
-        for i, line in enumerate(lines):
-            if line.strip() == "# The nubmer of cameras in this reconstruction":
-                n_cameras = int(lines[i + 1])
-                start_idx = i + 2
-                break
-                
-        current_idx = start_idx
-        while current_idx < len(lines):
-            # Skip empty lines and comments
-            if not lines[current_idx].strip() or lines[current_idx].startswith('#'):
-                current_idx += 1
-                continue
-                
-            try:
-                # Image filename (2 lines)
-                current_idx += 2
-                
-                # Focal length
-                focal = float(lines[current_idx].strip())
-                self.focal_lengths.append(focal)
-                current_idx += 1
-                
-                # Principal point
-                px, py = map(float, lines[current_idx].strip().split())
-                current_idx += 1
-                
-                # Skip Translation T and Camera Position C
-                current_idx += 2
-                
-                # Skip Axis Angle and Quaternion
-                current_idx += 2
-                
-                # Read Rotation Matrix (3x3)
-                R = np.zeros((3, 3))
-                for i in range(3):
-                    R[i] = np.array(list(map(float, lines[current_idx + i].strip().split())))
-                current_idx += 3
-                
-                # Go back to read camera position C
-                C_line = lines[current_idx - 7].strip()
-                C = np.array(list(map(float, C_line.split())))
-                
-                # Skip remaining parameters (distortion and EXIF)
-                current_idx += 3
-                
-                # Create intrinsic matrix K
-                K = np.array([
-                    [focal, 0, px],
-                    [0, focal, py],
-                    [0, 0, 1]
-                ])
-                
-                # Create full 4x4 intrinsic matrix
-                intrinsic = np.eye(4)
-                intrinsic[:3, :3] = K
-                self.intrinsics_all.append(intrinsic)
-                
-                # Create camera pose matrix (extrinsics)
-                # P = K[R | t] where t = -RC
-                pose = np.eye(4)
-                pose[:3, :3] = R
-                pose[:3, 3] = -R @ C  # Convert from camera position to translation
-                self.pose_all.append(pose)
-                
-            except Exception as e:
-                print(f"Error parsing camera {len(self.pose_all)}: {str(e)}")
-                break
+            # Find corresponding intrinsic
+            intrinsic = next(intr for intr in intrinsics if intr['intrinsicId'] == view['intrinsicId'])
+            
+            # Build intrinsic matrix
+            fx = float(intrinsic['focalLength'])
+            principal_point = [float(x) for x in intrinsic['principalPoint']]
+            width = float(intrinsic['width'])
+            height = float(intrinsic['height'])
+            
+            K = np.array([
+                [fx, 0, width/2 + principal_point[0]],
+                [0, fx, height/2 + principal_point[1]],
+                [0, 0, 1]
+            ])
+            
+            intrinsics_all[i] = K
+            intrinsics_all_inverse[i] = np.linalg.inv(K)
+            
+            # Find corresponding pose
+            pose = next(p for p in poses if p['poseId'] == view['poseId'])
+            
+            # Extract rotation and translation
+            R = np.array([float(x) for x in pose['pose']['transform']['rotation']]).reshape(3, 3)
+            t = np.array([float(x) for x in pose['pose']['transform']['center']])
+            
+            # Build 4x4 pose matrix
+            pose_matrix = np.eye(4)
+            pose_matrix[:3, :3] = R
+            pose_matrix[:3, 3] = t
+            
+            pose_all[i] = pose_matrix
+        
         
         # Convert to numpy arrays
-        self.intrinsics_all = np.array(self.intrinsics_all)
-        self.intrinsics_all_inv = np.linalg.inv(self.intrinsics_all)
-        self.focal = self.focal_lengths[0]  # Use first camera's focal length
-        self.pose_all = np.array(self.pose_all)
+        self.intrinsics_all = intrinsics_all
+        self.intrinsics_all_inv = intrinsics_all_inverse
+        self.focal = focal_length
+        self.pose_all = pose_all
         
+            
         if len(self.pose_all) != self.n_images:
             raise ValueError(f"Number of cameras in file ({len(self.pose_all)}) does not match number of images ({self.n_images})")
-        
+    
 def NeuS_to_NeuS2(inputFolder, outputFolder, mask_certainty_name):
     conf = {
         "data_dir": inputFolder,
