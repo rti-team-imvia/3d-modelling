@@ -42,7 +42,7 @@ done
 
 # If --num-iter is not provided, set it to 10000
 if [ -z "$num_iter" ]; then
-    num_iter=100000
+    num_iter=10000
 fi
 
 # If --scale-albedo is provided, run the albedo scaling steps
@@ -73,6 +73,6 @@ iterWarmupMask=$(($iterLightOptimal/5))
 resolutionMarchingCube=${resolution:-1024}
 
 # Execute the commands with the defined variables
-./build/testbed --scene "${case}/" --maxiter "${iterWarmupMask}" --save-snapshot --mask-weight 1.0 --no-gui --save-mesh$flags
-./build/testbed --scene "${case}/" --maxiter "${iterWarmupLightGlobal}" --save-snapshot --mask-weight 0.3 --no-gui --snapshot "${case}/snapshot_${iterWarmupMask}.msgpack" --save-mesh $flags
-./build/testbed --scene "${case}/" --maxiter "${iterLightOptimal}" --save-snapshot --mask-weight 0.3 --no-gui --snapshot "${case}/snapshot_${iterWarmupLightGlobal}.msgpack" --save-mesh --resolution "${resolutionMarchingCube}" --opti-lights $flags
+./build/testbed --scene "${case}/" --maxiter "${iterWarmupMask}" --save-snapshot --mask-weight 1.0 --no-gui --save-mesh --no-albedo $flags
+./build/testbed --scene "${case}/" --maxiter "${iterWarmupLightGlobal}" --save-snapshot --mask-weight 0.3 --no-gui --snapshot "${case}/snapshot_${iterWarmupMask}.msgpack" --save-mesh --no-albedo $flags
+./build/testbed --scene "${case}/" --maxiter "${iterLightOptimal}" --save-snapshot --mask-weight 0.3 --no-gui --snapshot "${case}/snapshot_${iterWarmupLightGlobal}.msgpack" --save-mesh --resolution "${resolutionMarchingCube}" --opti-lights --no-albedo $flags
